@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Christmas Meal Choices</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#222; --muted:#666; --accent:#8a1c2b; --line:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1a; --card:#262626; --ink:#eee; --muted:#aaa; --accent:#e0707f; --line:#444; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 20px; }
+  fieldset { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
+  legend { font-weight:700; color:var(--accent); padding:0 6px; }
+  label.f { display:block; margin:0 0 12px; font-weight:600; }
+  input[type=text], input[type=email] { width:100%; padding:10px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
+  .course { margin:14px 0 4px; font-weight:600; }
+  .opt { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; }
+  .opt:hover { background:var(--bg); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  button { font:inherit; padding:10px 18px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.alt { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  #msg { margin:12px 0; padding:10px 12px; border-radius:6px; display:none; }
+  #msg.ok { display:block; background:#e3f4e3; color:#14501a; }
+  #msg.err { display:block; background:#fbe4e4; color:#7a1414; }
+  .key { font-size:.85em; color:var(--muted); }
+  .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Christmas Meal Choices</h1>
+  <p class="sub">Choose one starter, main and dessert for yourself and (optionally) your plus one.
+    Use the same email later to look up or change your choices.
+    <span class="key">VE = vegan · GF = gluten free · DF = dairy free</span></p>
+
+  <form id="form" novalidate>
+    <fieldset>
+      <legend>Your email</legend>
+      <label class="f">Email <input type="email" id="email" autocomplete="email" required></label>
+      <div class="row"><button type="button" class="alt" id="lookup">Look up existing choices</button></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Member</legend>
+      <label class="f">Name <input type="text" id="member_name" autocomplete="name" required></label>
+      <div id="member_meals"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Plus One</legend>
+      <label class="check"><input type="checkbox" id="has_plus"> Bringing a plus one</label>
+      <div id="plus_wrap" hidden>
+        <label class="f">Name <input type="text" id="plus_one_name"></label>
+        <div id="plus_meals"></div>
+      </div>
+    </fieldset>
+
+    <div id="msg" role="status"></div>
+    <button type="submit" id="submit">Save my choices</button>
+  </form>
+</main>
+
+<script>
+const SUPABASE_URL = "https://qkkcvbafkderoxlxvjww.supabase.co";
+const SUPABASE_KEY = "sb_publishable_FzDjgkUIrncKMuyt253GsA_qK2fGKH1";
+
+const MENU = {
+  starter: ["Broccoli and Stilton Soup (VE)", "Chicken Liver Pate", "Rainbow Beetroot Carpaccio (VE)", "No starter"],
+  main:    ["Traditional Roast Turkey", "Pan Fried Seabass", "Risotto Verde (VE)"],
+  dessert: ["Traditional Christmas Pudding", "White Chocolate Panna Cotta (GF/DF)", "Apple and Forest Fruit Crumble", "No dessert"]
+};
+const COURSES = [["starter","Starter"],["main","Main"],["dessert","Dessert"]];
+
+const $ = id => document.getElementById(id);
+const msg = (text, cls) => { const m = $("msg"); m.textContent = text; m.className = cls || ""; };
+
+function renderMeals(container, prefix) {
+  $(container).innerHTML = COURSES.map(([key, label]) =>
+    `<div class="course">${label}</div>` +
+    MENU[key].map(o => `<label class="opt"><input type="radio" name="${prefix}_${key}" value="${o}"> ${o}</label>`).join("")
+  ).join("");
+}
+renderMeals("member_meals", "member");
+renderMeals("plus_meals", "plus");
+
+$("has_plus").addEventListener("change", e => { $("plus_wrap").hidden = !e.target.checked; });
+
+const picked = (prefix, key) => {
+  const r = document.querySelector(`input[name="${prefix}_${key}"]:checked`);
+  return r ? r.value : null;
+};
+const setPicked = (prefix, key, val) => {
+  document.querySelectorAll(`input[name="${prefix}_${key}"]`).forEach(r => { r.checked = (r.value === val); });
+};
+
+async function rpc(fn, args) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(args)
+  });
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+$("lookup").addEventListener("click", async () => {
+  const email = $("email").value.trim();
+  if (!validEmail(email)) return msg("Enter a valid email address first.", "err");
+  try {
+    const rows = await rpc("get_meal_choice", { p_email: email });
+    if (!rows.length) return msg("No saved choices for that email yet.", "err");
+    const r = rows[0];
+    $("member_name").value = r.member_name;
+    COURSES.forEach(([k]) => setPicked("member", k, r["member_" + k]));
+    const hasPlus = !!r.plus_one_name;
+    $("has_plus").checked = hasPlus;
+    $("plus_wrap").hidden = !hasPlus;
+    $("plus_one_name").value = r.plus_one_name || "";
+    COURSES.forEach(([k]) => setPicked("plus", k, r["plus_one_" + k]));
+    msg("Loaded your saved choices. Change them and save again if needed.", "ok");
+  } catch (err) { msg("Lookup failed: " + err.message, "err"); }
+});
+
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("member_name").value.trim(), email = $("email").value.trim();
+  if (!name) return msg("Please enter your name.", "err");
+  if (!validEmail(email)) return msg("Please enter a valid email address.", "err");
+  const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("member", k)]));
+  if (Object.values(m).includes(null)) return msg("Please choose a starter, main and dessert for yourself.", "err");
+
+  const args = {
+    p_email: email, p_member_name: name,
+    p_member_starter: m.starter, p_member_main: m.main, p_member_dessert: m.dessert
+  };
+  if ($("has_plus").checked) {
+    const pname = $("plus_one_name").value.trim();
+    const p = Object.fromEntries(COURSES.map(([k]) => [k, picked("plus", k)]));
+    if (!pname) return msg("Please enter your plus one's name.", "err");
+    if (Object.values(p).includes(null)) return msg("Please choose a starter, main and dessert for your plus one.", "err");
+    Object.assign(args, { p_plus_one_name: pname, p_plus_one_starter: p.starter, p_plus_one_main: p.main, p_plus_one_dessert: p.dessert });
+  }
+
+  $("submit").disabled = true;
+  try {
+    await rpc("submit_meal_choice", args);
+    msg("Thank you, your choices are saved. Use the same email to change them later.", "ok");
+  } catch (err) { msg("Save failed: " + err.message, "err"); }
+  finally { $("submit").disabled = false; }
+});
+</script>
+</body>
+</html>
