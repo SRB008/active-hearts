@@ -15,7 +15,7 @@
   h1 { margin:0 0 4px; }
   .sub { color:var(--muted); margin:0 0 20px; }
   fieldset { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
-  legend { font-weight:700; color:var(--accent); padding:0 6px; }
+  legend { font-size:20px; font-weight:700; color:var(--accent); padding:0 6px; }
   label.f { display:block; margin:0 0 12px; font-weight:600; }
   input[type=text], input[type=email] { width:100%; padding:10px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
   .course { margin:14px 0 4px; font-weight:600; }
@@ -29,6 +29,13 @@
   #msg.ok { display:block; background:#e3f4e3; color:#14501a; }
   #msg.err { display:block; background:#fbe4e4; color:#7a1414; }
   .key { font-size:.85em; color:var(--muted); }
+  #menu_link { color:var(--accent); }
+  dialog { max-width:560px; width:calc(100% - 32px); max-height:85vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog h2 { margin:0 0 8px; }
+  dialog h3 { margin:16px 0 6px; color:var(--accent); }
+  dialog p.dish { margin:0 0 10px; }
+  dialog p.dish span { display:block; color:var(--muted); font-size:.92em; }
   .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
 </style>
 </head>
@@ -49,6 +56,7 @@
     <fieldset>
       <legend>Active Member</legend>
       <label class="f">Name <input type="text" id="member_name" autocomplete="name" required></label>
+      <p class="f"><a href="#" id="menu_link">Menu</a></p>
       <div id="member_meals"></div>
     </fieldset>
 
@@ -65,6 +73,13 @@
     <button type="submit" id="submit">Save my choices</button>
   </form>
 </main>
+
+<dialog id="menu_dialog">
+  <h2>Menu</h2>
+  <div id="menu_body"></div>
+  <p class="key">VE = vegetarian · GF = gluten free · DF = dairy free</p>
+  <button type="button" id="menu_close">Close</button>
+</dialog>
 
 <script>
 const SUPABASE_URL = "https://qkkcvbafkderoxlxvjww.supabase.co";
@@ -111,6 +126,30 @@ async function rpc(fn, args) {
 }
 
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+const MENU_DETAIL = {
+  Starter: [
+    ["Broccoli and Stilton Soup (VE)", "with a crusty bread roll"],
+    ["Chicken Liver Pate", "with caramelised red onion chutney, dressed salad and toasted sourdough"],
+    ["Rainbow Beetroot Carpaccio (VE)", "with dressed salad, carpaccio dressing and toasted sourdough"]
+  ],
+  Main: [
+    ["Traditional Roast Turkey", "with roast potatoes, braised red cabbage, pigs in blankets, sage and onion stuffing, seasonal vegetables"],
+    ["Pan Fried Seabass", "with sautéed new potatoes, seasonal vegetables and salsa verde"],
+    ["Risotto Verde (VE)", "with broad beans, spinach, peas, tenderstem broccoli and herb oil"]
+  ],
+  Dessert: [
+    ["Traditional Christmas Pudding", "with brandy custard"],
+    ["White Chocolate Panna Cotta (GF/DF)", "with forest fruit compote and shortbread"],
+    ["Apple and Forest Fruit Crumble", "with custard and vegan vanilla ice cream"]
+  ]
+};
+$("menu_body").innerHTML = Object.entries(MENU_DETAIL).map(([course, dishes]) =>
+  `<h3>${course}</h3>` + dishes.map(([n, d]) => `<p class="dish"><strong>${n}</strong><span>${d}</span></p>`).join("")
+).join("");
+$("menu_link").addEventListener("click", e => { e.preventDefault(); $("menu_dialog").showModal(); });
+$("menu_close").addEventListener("click", () => $("menu_dialog").close());
+$("menu_dialog").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
 $("clear").addEventListener("click", () => {
   $("form").reset();
