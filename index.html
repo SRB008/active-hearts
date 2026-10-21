@@ -43,7 +43,7 @@
     <fieldset>
       <legend>Your email</legend>
       <label class="f">Email <input type="email" id="email" autocomplete="email" required></label>
-      <div class="row"><button type="button" class="alt" id="lookup">Look up existing choices</button></div>
+      <div class="row"><button type="button" class="alt" id="lookup">Look up existing choices</button> <button type="button" class="alt" id="clear">Clear</button></div>
     </fieldset>
 
     <fieldset>
@@ -111,6 +111,13 @@ async function rpc(fn, args) {
 }
 
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+$("clear").addEventListener("click", () => {
+  $("form").reset();
+  $("plus_wrap").hidden = true;
+  msg("");
+  $("email").focus();
+});
 
 $("lookup").addEventListener("click", async () => {
   const email = $("email").value.trim();
