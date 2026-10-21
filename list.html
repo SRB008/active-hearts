@@ -24,6 +24,8 @@
   thead th { background:var(--bg); white-space:nowrap; }
   tr.member td { border-top:2px solid var(--accent); }
   tr.plus td { color:var(--muted); }
+  h2 { margin:24px 0 8px; font-size:1.1em; }
+  #totals { margin:0; padding-left:20px; }
 </style>
 </head>
 <body>
@@ -42,6 +44,8 @@
       </thead>
       <tbody id="rows"></tbody>
     </table>
+    <h2>Meal totals</h2>
+    <ul id="totals"></ul>
   </div>
 </main>
 
@@ -56,6 +60,25 @@ const msg = (t, err) => { const m = document.getElementById("msg"); m.textConten
 
 let passcode = "";
 let lastData = [];
+
+const COURSES = [["starter", "Starter"], ["main", "Main"], ["dessert", "Dessert"]];
+
+// Counts every member and plus one meal; returns lines like "3 x Starter - Chicken Liver Pate".
+// Grouped by course, highest count first.
+function mealTotals(data) {
+  const lines = [];
+  for (const [key, label] of COURSES) {
+    const counts = new Map();
+    for (const r of data) {
+      for (const v of [r["member_" + key], r["plus_one_" + key]]) {
+        if (v && v !== "No starter" && v !== "No dessert") counts.set(v, (counts.get(v) || 0) + 1);
+      }
+    }
+    [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .forEach(([name, n]) => lines.push(`${n} x ${label} - ${name}`));
+  }
+  return lines;
+}
 
 document.getElementById("export").addEventListener("click", () => {
   if (!window.jspdf) return msg("PDF library failed to load. Check your internet connection.", true);
@@ -82,6 +105,16 @@ document.getElementById("export").addEventListener("click", () => {
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [138, 28, 43] },
     didParseCell: d => { if (d.section === "body" && !d.row.raw[0]) d.cell.styles.textColor = [110, 110, 110]; }
+  });
+  let y = doc.lastAutoTable.finalY + 24;
+  doc.setFontSize(11);
+  if (y > 540) { doc.addPage(); y = 40; }
+  doc.text("Meal totals", 40, y);
+  doc.setFontSize(9);
+  mealTotals(lastData).forEach(l => {
+    y += 14;
+    if (y > 560) { doc.addPage(); y = 40; }
+    doc.text(l, 40, y);
   });
   doc.save("meal-choices.pdf");
 });
@@ -129,6 +162,7 @@ document.getElementById("auth").addEventListener("submit", async e => {
         : "")
     ).join("");
     lastData = data;
+    document.getElementById("totals").innerHTML = mealTotals(data).map(l => `<li>${esc(l)}</li>`).join("");
     document.getElementById("export").hidden = false;
     document.getElementById("out").hidden = false;
     msg(`${data.length} response${data.length === 1 ? "" : "s"}.`);
