@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>View Meal Choices List</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-mono.png">
+<title>Meal Choices List</title>
 <style>
   :root { --bg:#f6f4ef; --card:#fff; --ink:#222; --muted:#666; --accent:#8a1c2b; --line:#ddd; }
   @media (prefers-color-scheme: dark) {
@@ -31,13 +30,13 @@
 </head>
 <body>
 <main>
-  <h1>View Meal Choices</h1>
+  <h1>Meal Choices</h1>
   <form class="bar" id="auth">
     <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password" required>
     <button type="submit">Show list</button>
   </form>
   <div id="msg"></div>
-  <div class="bar"><button type="button" id="export" hidden>Export PDF</button></div>
+  <div class="bar"><button type="button" id="export" hidden>Export for Me</button> <button type="button" id="export_birch" hidden>Export for Birch</button></div>
   <div class="wrap" id="out" hidden>
     <table>
       <thead>
@@ -81,7 +80,8 @@ function mealTotals(data) {
   return lines;
 }
 
-document.getElementById("export").addEventListener("click", () => {
+// forBirch drops the email, deposit and paid columns.
+function exportPdf(forBirch) {
   if (!window.jspdf) return msg("PDF library failed to load. Check your internet connection.", true);
   const state = {};
   document.querySelectorAll("#rows tr.member").forEach(tr => {
@@ -91,21 +91,28 @@ document.getElementById("export").addEventListener("click", () => {
   const body = [];
   lastData.forEach(r => {
     const [dep, paid] = state[r.email] || [r.deposit, r.paid];
-    body.push([r.email, r.member_name, r.member_starter, r.member_main, r.member_dessert, dep ? "Yes" : "", paid ? "Yes" : ""]);
-    if (r.plus_one_name) body.push(["", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert, "", ""]);
+    const member = [r.member_name, r.member_starter, r.member_main, r.member_dessert];
+    const plus = r.plus_one_name ? [r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert] : null;
+    if (forBirch) {
+      body.push({ cells: member });
+      if (plus) body.push({ cells: plus, plus: true });
+    } else {
+      body.push({ cells: [r.email, ...member, dep ? "Yes" : "", paid ? "Yes" : ""] });
+      if (plus) body.push({ cells: ["", ...plus, "", ""], plus: true });
+    }
   });
   const doc = new window.jspdf.jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   doc.setFontSize(14);
-  doc.text("Meal Choices", 40, 36);
+  doc.text(forBirch ? "Meal Choices - For Birch" : "Meal Choices", 40, 36);
   doc.setFontSize(9);
   doc.text(new Date().toLocaleDateString("en-GB"), 40, 50);
   doc.autoTable({
     startY: 60,
-    head: [["Email", "Name", "Starter", "Main", "Dessert", "Deposit", "Paid"]],
-    body,
+    head: [forBirch ? ["Name", "Starter", "Main", "Dessert"] : ["Email", "Name", "Starter", "Main", "Dessert", "Deposit", "Paid"]],
+    body: body.map(b => b.cells),
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [138, 28, 43] },
-    didParseCell: d => { if (d.section === "body" && !d.row.raw[0]) d.cell.styles.textColor = [110, 110, 110]; }
+    didParseCell: d => { if (d.section === "body" && body[d.row.index].plus) d.cell.styles.textColor = [110, 110, 110]; }
   });
   let y = doc.lastAutoTable.finalY + 24;
   doc.setFontSize(11);
@@ -117,8 +124,10 @@ document.getElementById("export").addEventListener("click", () => {
     if (y > 560) { doc.addPage(); y = 40; }
     doc.text(l, 40, y);
   });
-  doc.save("meal-choices.pdf");
-});
+  doc.save(forBirch ? "meal-choices-for-birch.pdf" : "meal-choices.pdf");
+}
+document.getElementById("export").addEventListener("click", () => exportPdf(false));
+document.getElementById("export_birch").addEventListener("click", () => exportPdf(true));
 
 async function rpc(fn, args) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -165,6 +174,7 @@ document.getElementById("auth").addEventListener("submit", async e => {
     lastData = data;
     document.getElementById("totals").innerHTML = mealTotals(data).map(l => `<li>${esc(l)}</li>`).join("");
     document.getElementById("export").hidden = false;
+    document.getElementById("export_birch").hidden = false;
     document.getElementById("out").hidden = false;
     msg(`${data.length} response${data.length === 1 ? "" : "s"}.`);
   } catch (err) { msg(err.message, true); }
