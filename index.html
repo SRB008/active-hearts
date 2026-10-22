@@ -3,9 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
 <title>Active Hearts Christmas Meal</title>
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>
   :root { --bg:#f6f4ef; --card:#fff; --ink:#222; --muted:#666; --accent:#8a1c2b; --line:#ddd; }
   @media (prefers-color-scheme: dark) {
@@ -43,14 +42,16 @@
 </head>
 <body>
 <main>
-  <h1>Active Hearts Christmas Meal</h1>
-  <p class="sub">Choose a starter, main and dessert for yourself and optional plus one. Use the same email later to look up or change your choices. <b>Last chance to change meal choice is midnight 9th November!</b><br>
+  <h1>Christmas Meal Choices</h1>
+  <p class="sub">Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
+    Use the same email later to look up or change your choices. <b>Last chance to change meal choice is midnight 9th November!</b><br>
     <span class="key">VE = vegeterian · GF = gluten free · DF = dairy free</span></p>
 
   <form id="form" novalidate>
     <fieldset>
       <legend>Your email</legend>
       <label class="f">Email <input type="email" id="email" autocomplete="email" required></label>
+      <label class="check"><input type="checkbox" id="no_email"> No email</label>
       <div class="row"><button type="button" class="alt" id="lookup">Look up existing choices</button> <button type="button" class="alt" id="clear">Clear</button></div>
     </fieldset>
 
@@ -128,6 +129,21 @@ async function rpc(fn, args) {
 
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
+// With "No email" ticked the record key is the member's name without spaces + @no.email.
+// Returns "" when the key cannot be built yet.
+function recordEmail() {
+  if ($("no_email").checked) {
+    const name = $("member_name").value.replace(/\s+/g, "");
+    return name ? name + "@no.email" : "";
+  }
+  return $("email").value.trim();
+}
+
+$("no_email").addEventListener("change", e => {
+  $("email").disabled = e.target.checked;
+  if (e.target.checked) $("email").value = "";
+});
+
 const MENU_DETAIL = {
   Starter: [
     ["Broccoli and Stilton Soup (VE)", "with a crusty bread roll"],
@@ -155,13 +171,15 @@ $("menu_dialog").addEventListener("click", e => { if (e.target === e.currentTarg
 $("clear").addEventListener("click", () => {
   $("form").reset();
   $("plus_wrap").hidden = true;
+  $("email").disabled = false;
   msg("");
   $("email").focus();
 });
 
 $("lookup").addEventListener("click", async () => {
-  const email = $("email").value.trim();
-  if (!validEmail(email)) return msg("Enter a valid email address first.", "err");
+  const email = recordEmail();
+  if ($("no_email").checked && !email) return msg("Enter the member's name first.", "err");
+  if (!validEmail(email)) return msg("Enter a valid email address first or check no email.", "err");
   try {
     const rows = await rpc("get_meal_choice", { p_email: email });
     if (!rows.length) return msg("No saved choices for that email yet.", "err");
@@ -179,9 +197,9 @@ $("lookup").addEventListener("click", async () => {
 
 $("form").addEventListener("submit", async e => {
   e.preventDefault();
-  const name = $("member_name").value.trim(), email = $("email").value.trim();
+  const name = $("member_name").value.trim(), email = recordEmail();
   if (!name) return msg("Please enter your name.", "err");
-  if (!validEmail(email)) return msg("Please enter a valid email address.", "err");
+  if (!validEmail(email)) return msg("Please enter a valid email address, or tick No email.", "err");
   const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("member", k)]));
   if (Object.values(m).includes(null)) return msg("Please choose a starter, main and dessert for yourself.", "err");
 
@@ -200,7 +218,9 @@ $("form").addEventListener("submit", async e => {
   $("submit").disabled = true;
   try {
     await rpc("submit_meal_choice", args);
-    msg("Thank you, your choices are saved. Use the same email to change them later.", "ok");
+    msg($("no_email").checked
+      ? "Thank you, your choices are saved."
+      : "Thank you, your choices are saved. Use the same email to change them later.", "ok");
   } catch (err) { msg("Save failed: " + err.message, "err"); }
   finally { $("submit").disabled = false; }
 });
