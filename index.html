@@ -43,9 +43,10 @@
 <body>
 <main>
   <h1>Christmas Meal 2026</h1>
-  <p class="sub">Birch Hotel, Haywards Heath, Friday 11 December, 12:30.  Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
+  <p class="sub">Active Hearts Christmas meal, Birch Hotel, Haywards Heath, Friday 11 December, 12:30. Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
     Use the same email later to look up or change your choices. <b>Last chance to change meal choice is midnight 9th November!</b><br>
     <span class="key">VE = vegeterian · GF = gluten free · DF = dairy free</span></p>
+  <p class="sub" id="goers" hidden></p>
   <p class="sub">Data will only be used for this meal and deleted by 31 December 2026.</p>
 
   <form id="form" novalidate>
@@ -131,6 +132,16 @@ async function rpc(fn, args) {
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
+
+// Shows how many meals (members plus plus ones) have been chosen; stays hidden if the count can't be loaded.
+async function showGoers() {
+  try {
+    const n = await rpc("meal_goer_count", {});
+    $("goers").textContent = n + " feastive goers so far!";
+    $("goers").hidden = false;
+  } catch (err) { console.warn("Count failed:", err); }
+}
+showGoers();
 
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
@@ -272,6 +283,7 @@ $("form").addEventListener("submit", async e => {
   $("submit").disabled = true;
   try {
     await rpc("submit_meal_choice", args);
+    showGoers();
     // Failed emails must not make the save look failed.
     notifyOrganiser(args).catch(err => console.warn("Organiser email failed:", err));
     if ($("no_email").checked) {

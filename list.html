@@ -153,7 +153,8 @@ function exportPdf(forBirch) {
   doc.setFontSize(14);
   doc.text(forBirch ? "Meal Choices - For Birch" : "Meal Choices", 40, 36);
   doc.setFontSize(9);
-  doc.text(new Date().toLocaleDateString("en-GB"), 40, 50);
+  const attendees = lastData.length + lastData.filter(r => r.plus_one_name).length;
+  doc.text(new Date().toLocaleDateString("en-GB") + (forBirch ? ` - ${attendees} attendees` : ` - ${lastData.length} responses, ${attendees} attendees`), 40, 50);
   doc.autoTable({
     startY: 60,
     head: [forBirch ? ["Name", "Starter", "Main", "Dessert"] : ["Email", "Mobile", "Name", "Starter", "Main", "Dessert", "Received", "Deposit", "Paid"]],
@@ -237,7 +238,8 @@ async function loadList(pass) {
     document.getElementById("export").hidden = false;
     document.getElementById("export_birch").hidden = false;
     document.getElementById("out").hidden = false;
-    msg(`${data.length} response${data.length === 1 ? "" : "s"}.`);
+    const attendees = data.length + data.filter(r => r.plus_one_name).length;
+    msg(`${data.length} response${data.length === 1 ? "" : "s"}, ${attendees} attendee${attendees === 1 ? "" : "s"}.`);
   } catch (err) { msg(err.message, true); }
 }
 
