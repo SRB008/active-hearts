@@ -24,6 +24,7 @@
   thead th { background:var(--bg); white-space:nowrap; }
   tr.member td { border-top:2px solid var(--accent); }
   tr.plus td { color:var(--muted); }
+  input.amt { width:90px; text-align:right; }
   h2 { margin:24px 0 8px; font-size:1.1em; }
   #totals { margin:0; padding-left:20px; }
 </style>
@@ -40,7 +41,7 @@
   <div class="wrap" id="out" hidden>
     <table>
       <thead>
-        <tr><th>Email</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Deposit</th><th>Paid</th></tr>
+        <tr><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
@@ -80,25 +81,25 @@ function mealTotals(data) {
   return lines;
 }
 
-// forBirch drops the email, deposit and paid columns.
+// forBirch drops the email, mobile, deposit, paid and received columns.
 function exportPdf(forBirch) {
   if (!window.jspdf) return msg("PDF library failed to load. Check your internet connection.", true);
   const state = {};
   document.querySelectorAll("#rows tr.member").forEach(tr => {
     const [d, p] = tr.querySelectorAll("input[type=checkbox]");
-    state[tr.dataset.email] = [d.checked, p.checked];
+    state[tr.dataset.email] = [d.checked, p.checked, tr.querySelector("input[type=number]").value];
   });
   const body = [];
   lastData.forEach(r => {
-    const [dep, paid] = state[r.email] || [r.deposit, r.paid];
+    const [dep, paid, received] = state[r.email] || [r.deposit, r.paid, r.received];
     const member = [r.member_name, r.member_starter, r.member_main, r.member_dessert];
     const plus = r.plus_one_name ? [r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert] : null;
     if (forBirch) {
       body.push({ cells: member });
       if (plus) body.push({ cells: plus, plus: true });
     } else {
-      body.push({ cells: [r.email, ...member, dep ? "Yes" : "", paid ? "Yes" : ""] });
-      if (plus) body.push({ cells: ["", ...plus, "", ""], plus: true });
+      body.push({ cells: [r.email, r.mobile || "", ...member, received === null || received === "" ? "" : "£" + Number(received).toFixed(2), dep ? "Yes" : "", paid ? "Yes" : ""] });
+      if (plus) body.push({ cells: ["", "", ...plus, "", "", ""], plus: true });
     }
   });
   const doc = new window.jspdf.jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
@@ -108,7 +109,7 @@ function exportPdf(forBirch) {
   doc.text(new Date().toLocaleDateString("en-GB"), 40, 50);
   doc.autoTable({
     startY: 60,
-    head: [forBirch ? ["Name", "Starter", "Main", "Dessert"] : ["Email", "Name", "Starter", "Main", "Dessert", "Deposit", "Paid"]],
+    head: [forBirch ? ["Name", "Starter", "Main", "Dessert"] : ["Email", "Mobile", "Name", "Starter", "Main", "Dessert", "Received", "Deposit", "Paid"]],
     body: body.map(b => b.cells),
     styles: { fontSize: 8, cellPadding: 3 },
     headStyles: { fillColor: [138, 28, 43] },
@@ -142,13 +143,21 @@ async function rpc(fn, args) {
 
 document.getElementById("rows").addEventListener("change", async e => {
   const tr = e.target.closest("tr");
-  if (!tr || e.target.type !== "checkbox") return;
+  if (!tr || !["checkbox", "number"].includes(e.target.type)) return;
   const [dep, paid] = tr.querySelectorAll("input[type=checkbox]");
+  const amount = tr.querySelector("input[type=number]");
+  const received = amount.value === "" ? null : Math.round(Number(amount.value) * 100) / 100;
+  if (received !== null && !(received >= 0)) {
+    amount.value = amount.dataset.saved;
+    return msg("Received must be a positive amount.", true);
+  }
   try {
-    await rpc("set_meal_payment", { p_passcode: passcode, p_email: tr.dataset.email, p_deposit: dep.checked, p_paid: paid.checked });
+    await rpc("set_meal_payment", { p_passcode: passcode, p_email: tr.dataset.email, p_deposit: dep.checked, p_paid: paid.checked, p_received: received });
+    amount.dataset.saved = amount.value;
     msg("Saved.");
   } catch (err) {
-    e.target.checked = !e.target.checked;
+    if (e.target === amount) amount.value = amount.dataset.saved;
+    else e.target.checked = !e.target.checked;
     msg("Save failed: " + err.message, true);
   }
 });
@@ -164,11 +173,12 @@ document.getElementById("auth").addEventListener("submit", async e => {
     const cells = vals => vals.map(v => `<td>${esc(v)}</td>`).join("");
     document.getElementById("rows").innerHTML = data.map(r =>
       `<tr class="member" data-email="${esc(r.email)}">` +
-      cells([r.email, r.member_name, r.member_starter, r.member_main, r.member_dessert]) +
+      cells([r.email, r.mobile, r.member_name, r.member_starter, r.member_main, r.member_dessert]) +
+      `<td>£ <input type="number" class="amt" min="0" step="0.01" value="${r.received ?? ""}" data-saved="${r.received ?? ""}" aria-label="Received"></td>` +
       `<td><input type="checkbox"${r.deposit ? " checked" : ""} aria-label="Deposit"></td>` +
       `<td><input type="checkbox"${r.paid ? " checked" : ""} aria-label="Paid"></td></tr>` +
       (r.plus_one_name
-        ? `<tr class="plus">` + cells(["", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert]) + `<td></td><td></td></tr>`
+        ? `<tr class="plus">` + cells(["", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert]) + `<td></td><td></td><td></td></tr>`
         : "")
     ).join("");
     lastData = data;
