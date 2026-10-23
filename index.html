@@ -18,7 +18,7 @@
   fieldset { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
   legend { font-size:20px; font-weight:700; color:var(--accent); padding:0 6px; }
   label.f { display:block; margin:0 0 12px; font-weight:600; }
-  input[type=text], input[type=email] { width:100%; padding:10px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
+  input[type=text], input[type=email], input[type=tel] { width:100%; padding:10px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); }
   .course { margin:14px 0 4px; font-weight:600; }
   .opt { display:block; padding:6px 8px; border-radius:6px; cursor:pointer; }
   .opt:hover { background:var(--bg); }
@@ -42,10 +42,11 @@
 </head>
 <body>
 <main>
-  <h1>Christmas Meal Choices</h1>
-  <p class="sub">Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
+  <h1>Christmas Meal 2026</h1>
+  <p class="sub">Birch Hotel, Haywards Heath, Friday 11 December, 12:30.  Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
     Use the same email later to look up or change your choices. <b>Last chance to change meal choice is midnight 9th November!</b><br>
     <span class="key">VE = vegeterian · GF = gluten free · DF = dairy free</span></p>
+  <p class="sub">Data will only be used for this meal and deleted by 31 December 2026.</p>
 
   <form id="form" novalidate>
     <fieldset>
@@ -53,6 +54,7 @@
       <label class="f">Email <input type="email" id="email" autocomplete="email" required></label>
       <label class="check"><input type="checkbox" id="no_email"> No email (not able to change meal later)</label>
       <div class="row"><button type="button" class="alt" id="lookup">Look up existing choices</button> <button type="button" class="alt" id="clear">Clear</button></div>
+      <label class="f" style="margin-top:12px">Mobile number (optional) <input type="tel" id="mobile" autocomplete="tel" inputmode="tel"></label>
     </fieldset>
 
     <fieldset>
@@ -73,6 +75,7 @@
 
     <div id="msg" role="status"></div>
     <button type="submit" id="submit">Save my choices</button>
+    <p class="key">Emails come from active-hearts@ixiapps.co.uk</p>
   </form>
 </main>
 
@@ -86,6 +89,8 @@
 <script>
 const SUPABASE_URL = "https://qkkcvbafkderoxlxvjww.supabase.co";
 const SUPABASE_KEY = "sb_publishable_FzDjgkUIrncKMuyt253GsA_qK2fGKH1";
+const SMTP2GO_URL = "https://api.smtp2go.com/v3/";
+const SMTP2GO_API_KEY = "api-22A73DBCA6A744F687EEFAFC6520712E";
 
 const MENU = {
   starter: ["Broccoli and Stilton Soup (VE)", "Chicken Liver Pate", "Rainbow Beetroot Carpaccio (VE)", "No starter"],
@@ -139,6 +144,52 @@ function recordEmail() {
   return $("email").value.trim();
 }
 
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+<!-- change email address to send choices to different person -->
+const NOTIFY_EMAIL = "gretadunning@me.com";
+
+async function sendMail(to, subject, text, html) {
+  const res = await fetch(SMTP2GO_URL + "email/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: SMTP2GO_API_KEY,
+      sender: "Active Hearts <active-hearts@ixiapps.co.uk>",
+      to: [to], subject, text_body: text, html_body: html
+    })
+  });
+  const out = await res.json().catch(() => ({}));
+  if (!res.ok || (out.data && out.data.error)) throw new Error((out.data && out.data.error) || res.statusText);
+}
+
+// Copy of everything entered on the form, sent to the organiser after each save.
+function notifyOrganiser(a) {
+  const rows = [
+    ["Email", a.p_email], ["Mobile", a.p_mobile || ""],
+    ["Member name", a.p_member_name], ["Member starter", a.p_member_starter],
+    ["Member main", a.p_member_main], ["Member dessert", a.p_member_dessert],
+    ["Plus one name", a.p_plus_one_name || ""], ["Plus one starter", a.p_plus_one_starter || ""],
+    ["Plus one main", a.p_plus_one_main || ""], ["Plus one dessert", a.p_plus_one_dessert || ""]
+  ];
+  const text = rows.map(([k, v]) => `${k}: ${v}`).join("\n");
+  const html = "<table>" + rows.map(([k, v]) => `<tr><td><strong>${esc(k)}</strong></td><td>${esc(v)}</td></tr>`).join("") + "</table>";
+  return sendMail(NOTIFY_EMAIL, "Active Hearts meal choices - " + a.p_member_name, text, html);
+}
+
+// Confirmation sent to the member's own email address after each save.
+function emailMember(a) {
+  const sections = [["Member", a.p_member_name, "member"]];
+  if (a.p_plus_one_name) sections.push(["Plus one", a.p_plus_one_name, "plus_one"]);
+  const val = (p, c) => a["p_" + p + "_" + c];
+  const intro = "for the Active Hearts Christmas meal you picked:";
+  const text = [intro, ""].concat(a.p_mobile ? [`Mobile: ${a.p_mobile}`, ""] : [], sections.flatMap(([t, n, p]) =>
+    [`${t} - ${n}`, `  Starter: ${val(p, "starter")}`, `  Main: ${val(p, "main")}`, `  Dessert: ${val(p, "dessert")}`, ""])).join("\n");
+  const html = `<p>${intro}</p>` + (a.p_mobile ? `<p>Mobile: ${esc(a.p_mobile)}</p>` : "") + sections.map(([t, n, p]) =>
+    `<p><strong>${esc(t)} - ${esc(n)}</strong><br>Starter: ${esc(val(p, "starter"))}<br>Main: ${esc(val(p, "main"))}<br>Dessert: ${esc(val(p, "dessert"))}</p>`).join("");
+  return sendMail(a.p_email, "Your Active Hearts Christmas meal choices", text, html);
+}
+
 $("no_email").addEventListener("change", e => {
   $("email").disabled = e.target.checked;
   if (e.target.checked) $("email").value = "";
@@ -185,6 +236,7 @@ $("lookup").addEventListener("click", async () => {
     if (!rows.length) return msg("No saved choices for that email yet.", "err");
     const r = rows[0];
     $("member_name").value = r.member_name;
+    $("mobile").value = r.mobile || "";
     COURSES.forEach(([k]) => setPicked("member", k, r["member_" + k]));
     const hasPlus = !!r.plus_one_name;
     $("has_plus").checked = hasPlus;
@@ -200,11 +252,13 @@ $("form").addEventListener("submit", async e => {
   const name = $("member_name").value.trim(), email = recordEmail();
   if (!name) return msg("Please enter your name.", "err");
   if (!validEmail(email)) return msg("Please enter a valid email address, or tick No email.", "err");
+  const mobile = $("mobile").value.trim();
+  if (mobile && !/^\+?[\d\s()-]{7,20}$/.test(mobile)) return msg("Please enter a valid mobile number, or leave it blank.", "err");
   const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("member", k)]));
   if (Object.values(m).includes(null)) return msg("Please choose a starter, main and dessert for yourself.", "err");
 
   const args = {
-    p_email: email, p_member_name: name,
+    p_email: email, p_member_name: name, p_mobile: mobile || null,
     p_member_starter: m.starter, p_member_main: m.main, p_member_dessert: m.dessert
   };
   if ($("has_plus").checked) {
@@ -218,9 +272,17 @@ $("form").addEventListener("submit", async e => {
   $("submit").disabled = true;
   try {
     await rpc("submit_meal_choice", args);
-    msg($("no_email").checked
-      ? "Thank you, your choices are saved."
-      : "Thank you, your choices are saved. Use the same email to change them later.", "ok");
+    // Failed emails must not make the save look failed.
+    notifyOrganiser(args).catch(err => console.warn("Organiser email failed:", err));
+    if ($("no_email").checked) {
+      msg("Thank you, your choices are saved.", "ok");
+    } else {
+      msg("Thank you, your choices are saved. A copy has been emailed to " + email + ". Use the same email to change them later.", "ok");
+      emailMember(args).catch(err => {
+        console.warn("Member email failed:", err);
+        msg("Your choices are saved, but the confirmation email to " + email + " could not be sent.", "err");
+      });
+    }
   } catch (err) { msg("Save failed: " + err.message, "err"); }
   finally { $("submit").disabled = false; }
 });
