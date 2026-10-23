@@ -25,6 +25,23 @@
   tr.member td { border-top:2px solid var(--accent); }
   tr.plus td { color:var(--muted); }
   input.amt { width:90px; text-align:right; }
+  button.edit { padding:2px 8px; background:transparent; color:var(--accent); font-size:16px; }
+  dialog { max-width:600px; width:calc(100% - 32px); max-height:90vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog h2 { margin:0 0 12px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:0 0 12px; }
+  legend { font-size:18px; font-weight:700; color:var(--accent); padding:0 6px; }
+  label.f { display:block; margin:0 0 10px; font-weight:600; }
+  dialog input[type=text], dialog input[type=email], dialog input[type=tel] { width:100%; }
+  .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .course { margin:12px 0 4px; font-weight:600; }
+  .opt { display:block; padding:4px 8px; border-radius:6px; cursor:pointer; }
+  .opt:hover { background:var(--bg); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  button.alt { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  #e_msg { margin:8px 0; color:#c0392b; }
+  dialog input:disabled { opacity:.6; }
   h2 { margin:24px 0 8px; font-size:1.1em; }
   #totals { margin:0; padding-left:20px; }
 </style>
@@ -41,7 +58,7 @@
   <div class="wrap" id="out" hidden>
     <table>
       <thead>
-        <tr><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
+        <tr><th></th><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
@@ -49,6 +66,36 @@
     <ul id="totals"></ul>
   </div>
 </main>
+
+<dialog id="edit_dialog">
+  <h2>Edit record</h2>
+  <form id="edit_form" novalidate>
+    <fieldset>
+      <legend>Your email</legend>
+      <label class="f">Email <input type="email" id="e_email"></label>
+      <label class="check"><input type="checkbox" id="e_no_email"> No email</label>
+      <label class="f">Mobile number (optional) <input type="tel" id="e_mobile" inputmode="tel"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Active Member</legend>
+      <label class="f">Name <input type="text" id="e_member_name"></label>
+      <div id="e_member_meals"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Plus One</legend>
+      <label class="check"><input type="checkbox" id="e_has_plus"> Bringing a plus one</label>
+      <div id="e_plus_wrap" hidden>
+        <label class="f">Name <input type="text" id="e_plus_one_name"></label>
+        <div id="e_plus_meals"></div>
+      </div>
+    </fieldset>
+    <div id="e_msg" role="status"></div>
+    <div class="row">
+      <button type="submit" id="e_save">Save changes</button>
+      <button type="button" class="alt" id="e_cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -166,19 +213,23 @@ document.getElementById("auth").addEventListener("submit", async e => {
   e.preventDefault();
   msg("Loading...");
   document.getElementById("out").hidden = true;
+  await loadList(document.getElementById("pass").value);
+});
+
+async function loadList(pass) {
   try {
-    const pass = document.getElementById("pass").value;
     const data = await rpc("list_meal_choices", { p_passcode: pass });
     passcode = pass;
     const cells = vals => vals.map(v => `<td>${esc(v)}</td>`).join("");
     document.getElementById("rows").innerHTML = data.map(r =>
       `<tr class="member" data-email="${esc(r.email)}">` +
+      `<td><button type="button" class="edit" title="Edit" aria-label="Edit ${esc(r.member_name)}">&#9998;</button></td>` +
       cells([r.email, r.mobile, r.member_name, r.member_starter, r.member_main, r.member_dessert]) +
       `<td>£ <input type="number" class="amt" min="0" step="0.01" value="${r.received ?? ""}" data-saved="${r.received ?? ""}" aria-label="Received"></td>` +
       `<td><input type="checkbox"${r.deposit ? " checked" : ""} aria-label="Deposit"></td>` +
       `<td><input type="checkbox"${r.paid ? " checked" : ""} aria-label="Paid"></td></tr>` +
       (r.plus_one_name
-        ? `<tr class="plus">` + cells(["", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert]) + `<td></td><td></td><td></td></tr>`
+        ? `<tr class="plus">` + cells(["", "", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert]) + `<td></td><td></td><td></td></tr>`
         : "")
     ).join("");
     lastData = data;
@@ -188,6 +239,93 @@ document.getElementById("auth").addEventListener("submit", async e => {
     document.getElementById("out").hidden = false;
     msg(`${data.length} response${data.length === 1 ? "" : "s"}.`);
   } catch (err) { msg(err.message, true); }
+}
+
+// ---- Edit pop-up (mirrors the form on index.html; sends no emails) ----
+const MENU = {
+  starter: ["Broccoli and Stilton Soup (VE)", "Chicken Liver Pate", "Rainbow Beetroot Carpaccio (VE)", "No starter"],
+  main:    ["Traditional Roast Turkey", "Pan Fried Seabass", "Risotto Verde (VE)"],
+  dessert: ["Traditional Christmas Pudding", "White Chocolate Panna Cotta (GF/DF)", "Apple and Forest Fruit Crumble", "No dessert"]
+};
+const $ = id => document.getElementById(id);
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+let editingEmail = "";
+
+function renderMeals(container, prefix) {
+  $(container).innerHTML = COURSES.map(([key, label]) =>
+    `<div class="course">${label}</div>` +
+    MENU[key].map(o => `<label class="opt"><input type="radio" name="${prefix}_${key}" value="${esc(o)}"> ${esc(o)}</label>`).join("")
+  ).join("");
+}
+renderMeals("e_member_meals", "em");
+renderMeals("e_plus_meals", "ep");
+
+const picked = (prefix, key) => { const r = document.querySelector(`input[name="${prefix}_${key}"]:checked`); return r ? r.value : null; };
+const setPicked = (prefix, key, val) => document.querySelectorAll(`input[name="${prefix}_${key}"]`).forEach(r => { r.checked = (r.value === val); });
+const eMsg = t => { $("e_msg").textContent = t; };
+
+$("e_has_plus").addEventListener("change", e => { $("e_plus_wrap").hidden = !e.target.checked; });
+$("e_no_email").addEventListener("change", e => {
+  $("e_email").disabled = e.target.checked;
+  if (e.target.checked) $("e_email").value = "";
+});
+$("e_cancel").addEventListener("click", () => $("edit_dialog").close());
+
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button.edit");
+  if (!btn) return;
+  const r = lastData.find(x => x.email === btn.closest("tr").dataset.email);
+  if (!r) return;
+  editingEmail = r.email;
+  const noEmail = r.email.endsWith("@no.email");
+  $("e_no_email").checked = noEmail;
+  $("e_email").disabled = noEmail;
+  $("e_email").value = noEmail ? "" : r.email;
+  $("e_mobile").value = r.mobile || "";
+  $("e_member_name").value = r.member_name;
+  COURSES.forEach(([k]) => setPicked("em", k, r["member_" + k]));
+  const hasPlus = !!r.plus_one_name;
+  $("e_has_plus").checked = hasPlus;
+  $("e_plus_wrap").hidden = !hasPlus;
+  $("e_plus_one_name").value = r.plus_one_name || "";
+  COURSES.forEach(([k]) => setPicked("ep", k, r["plus_one_" + k]));
+  eMsg("");
+  $("edit_dialog").showModal();
+});
+
+$("edit_form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("e_member_name").value.trim();
+  if (!name) return eMsg("Please enter the member's name.");
+  const email = $("e_no_email").checked ? name.replace(/\s+/g, "") + "@no.email" : $("e_email").value.trim();
+  if (!validEmail(email)) return eMsg("Please enter a valid email address, or tick No email.");
+  const mobile = $("e_mobile").value.trim();
+  if (mobile && !/^\+?[\d\s()-]{7,20}$/.test(mobile)) return eMsg("Please enter a valid mobile number, or leave it blank.");
+  const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("em", k)]));
+  if (Object.values(m).includes(null)) return eMsg("Please choose a starter, main and dessert for the member.");
+
+  const args = {
+    p_passcode: passcode, p_old_email: editingEmail, p_email: email, p_member_name: name, p_mobile: mobile || null,
+    p_member_starter: m.starter, p_member_main: m.main, p_member_dessert: m.dessert,
+    p_plus_one_name: null, p_plus_one_starter: null, p_plus_one_main: null, p_plus_one_dessert: null
+  };
+  if ($("e_has_plus").checked) {
+    const pname = $("e_plus_one_name").value.trim();
+    const p = Object.fromEntries(COURSES.map(([k]) => [k, picked("ep", k)]));
+    if (!pname) return eMsg("Please enter the plus one's name.");
+    if (Object.values(p).includes(null)) return eMsg("Please choose a starter, main and dessert for the plus one.");
+    Object.assign(args, { p_plus_one_name: pname, p_plus_one_starter: p.starter, p_plus_one_main: p.main, p_plus_one_dessert: p.dessert });
+  }
+
+  $("e_save").disabled = true;
+  try {
+    await rpc("admin_update_meal_choice", args);
+    $("edit_dialog").close();
+    await loadList(passcode);
+    msg("Record updated.");
+  } catch (err) {
+    eMsg(/duplicate key|unique/i.test(err.message) ? "Another record already uses that email." : "Save failed: " + err.message);
+  } finally { $("e_save").disabled = false; }
 });
 </script>
 </body>
