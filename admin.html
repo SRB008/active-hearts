@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meal Choices Admin</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#222; --muted:#666; --accent:#8a1c2b; --line:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1a; --card:#262626; --ink:#eee; --muted:#aaa; --accent:#e0707f; --line:#444; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui,sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { margin:0 0 12px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  input[type=text], input[type=email], input[type=tel], input[type=password], input[type=search], input[type=number] {
+    padding:8px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); }
+  button { font:inherit; padding:8px 16px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  button.alt { background:transparent; color:var(--accent); }
+  button.edit { padding:2px 8px; background:transparent; color:var(--accent); font-size:16px; }
+  button:disabled { opacity:.6; cursor:wait; }
+  #msg { color:var(--muted); margin-bottom:12px; }
+  #msg.err { color:#c0392b; }
+  #search { flex:1 1 260px; }
+  .wrap { overflow-x:auto; }
+  table { border-collapse:collapse; background:var(--card); min-width:100%; }
+  th, td { border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; }
+  thead th { background:var(--bg); white-space:nowrap; }
+  tr.plus td { color:var(--muted); }
+
+  dialog { max-width:620px; width:calc(100% - 32px); max-height:90vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog h2 { margin:0 0 12px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:0 0 12px; }
+  legend { font-size:18px; font-weight:700; color:var(--accent); padding:0 6px; }
+  label.f { display:block; margin:0 0 10px; font-weight:600; }
+  dialog input[type=text], dialog input[type=email], dialog input[type=tel] { width:100%; }
+  .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .course { margin:12px 0 4px; font-weight:600; }
+  .opt { display:block; padding:4px 8px; border-radius:6px; cursor:pointer; }
+  .opt:hover { background:var(--bg); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .pay { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .pay label { font-weight:600; }
+  #e_msg { margin:8px 0; color:#c0392b; }
+  dialog input:disabled { opacity:.6; }
+  .x-wrap { position:sticky; top:0; height:0; text-align:right; z-index:1; }
+  button.x { padding:0; width:32px; height:32px; line-height:1; font-size:22px; border-radius:50%; background:var(--card); color:var(--accent); box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  .key { font-size:.85em; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Meal Choices Admin</h1>
+
+  <form class="bar" id="auth">
+    <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password" required>
+    <button type="submit">Unlock</button>
+    <label><input type="checkbox" id="remember"> Remember on this device</label>
+    <a href="#" id="forget" hidden>Forget this device</a>
+  </form>
+
+  <div id="tools" hidden>
+    <div class="bar">
+      <input type="search" id="search" placeholder="Search by email or member name" autocomplete="off">
+      <button type="button" id="new_btn">New</button>
+    </div>
+  </div>
+
+  <div id="msg"></div>
+
+  <div class="wrap" id="out" hidden>
+    <table>
+      <thead>
+        <tr><th></th><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+
+<dialog id="edit_dialog">
+  <div class="x-wrap"><button type="button" class="x" id="e_x" title="Close" aria-label="Close">&times;</button></div>
+  <h2 id="e_title">Edit record</h2>
+  <form id="edit_form" novalidate>
+    <fieldset>
+      <legend>Your email</legend>
+      <label class="f">Email <input type="email" id="e_email"></label>
+      <label class="check"><input type="checkbox" id="e_no_email"> No email</label>
+      <label class="f">Mobile number (optional) <input type="tel" id="e_mobile" inputmode="tel"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Active Member</legend>
+      <label class="f">Name <input type="text" id="e_member_name"></label>
+      <div id="e_member_meals"></div>
+      <span class="key">VE = vegetarian · GF = gluten free · DF = dairy free</span>
+    </fieldset>
+    <fieldset>
+      <legend>Plus One</legend>
+      <label class="check"><input type="checkbox" id="e_has_plus"> Bringing a plus one</label>
+      <div id="e_plus_wrap" hidden>
+        <label class="f">Name <input type="text" id="e_plus_one_name"></label>
+        <div id="e_plus_meals"></div>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Payment</legend>
+      <div class="pay">
+        <label>Received £ <input type="number" id="e_received" min="0" step="0.01" style="width:100px;text-align:right"></label>
+        <label class="check" style="margin:0"><input type="checkbox" id="e_deposit"> Deposit</label>
+        <label class="check" style="margin:0"><input type="checkbox" id="e_paid"> Paid</label>
+      </div>
+    </fieldset>
+    <div id="e_msg" role="status"></div>
+    <div class="row">
+      <button type="submit" id="e_save">Save</button>
+      <button type="button" class="alt" id="e_cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const SUPABASE_URL = "https://qkkcvbafkderoxlxvjww.supabase.co";
+const SUPABASE_KEY = "sb_publishable_FzDjgkUIrncKMuyt253GsA_qK2fGKH1";
+
+const MENU = {
+  starter: ["Broccoli and Stilton Soup (VE)", "Chicken Liver Pate", "Rainbow Beetroot Carpaccio (VE)", "No starter"],
+  main:    ["Traditional Roast Turkey", "Pan Fried Seabass", "Risotto Verde (VE)"],
+  dessert: ["Traditional Christmas Pudding", "White Chocolate Panna Cotta (GF/DF)", "Apple and Forest Fruit Crumble", "No dessert"]
+};
+const COURSES = [["starter", "Starter"], ["main", "Main"], ["dessert", "Dessert"]];
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const msg = (t, err) => { $("msg").textContent = t; $("msg").className = err ? "err" : ""; };
+const eMsg = t => { $("e_msg").textContent = t; };
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+let passcode = "";
+let records = [];
+let editingEmail = null; // null = adding a new record
+
+async function rpc(fn, args) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(args)
+  });
+  if (!res.ok) throw new Error(await res.text() || res.statusText);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ---- Load and search ----
+async function loadRecords() {
+  records = await rpc("list_meal_choices", { p_passcode: passcode });
+  renderResults();
+}
+
+function renderResults() {
+  const q = $("search").value.trim().toLowerCase();
+  const hits = q ? records.filter(r => r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q)) : records;
+  const cells = vals => vals.map(v => `<td>${esc(v)}</td>`).join("");
+  $("rows").innerHTML = hits.map(r =>
+    `<tr data-email="${esc(r.email)}">` +
+    `<td><button type="button" class="edit" title="Edit" aria-label="Edit ${esc(r.member_name)}">&#9998;</button></td>` +
+    cells([r.email, r.mobile, r.member_name, r.member_starter, r.member_main, r.member_dessert,
+           r.received === null ? "" : "£" + Number(r.received).toFixed(2), r.deposit ? "Yes" : "", r.paid ? "Yes" : ""]) + "</tr>" +
+    (r.plus_one_name
+      ? `<tr class="plus">` + cells(["", "", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert, "", "", ""]) + "</tr>"
+      : "")
+  ).join("");
+  $("out").hidden = false;
+  msg(q ? `${hits.length} of ${records.length} records match.` : `${records.length} record${records.length === 1 ? "" : "s"}.`);
+}
+
+// Returns true on success; "invalid" when the passcode was rejected; false on any other error.
+async function unlock(pass) {
+  msg("Loading...");
+  passcode = pass;
+  try {
+    await loadRecords();
+    $("tools").hidden = false;
+    return true;
+  } catch (err) {
+    passcode = "";
+    const invalid = /Invalid passcode/.test(err.message);
+    msg(invalid ? "Invalid passcode." : err.message, true);
+    return invalid ? "invalid" : false;
+  }
+}
+
+// Optional "remember on this device"; storage can be blocked, so every access is guarded.
+const PASS_KEY = "ah_passcode";
+function savePasscode(p) {
+  try { localStorage.setItem(PASS_KEY, p); $("forget").hidden = false; } catch (e) { /* storage blocked */ }
+}
+function forgetPasscode() {
+  try { localStorage.removeItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  $("forget").hidden = true;
+}
+
+$("auth").addEventListener("submit", async e => {
+  e.preventDefault();
+  const pass = $("pass").value;
+  if ((await unlock(pass)) === true) {
+    $("search").focus();
+    if ($("remember").checked) savePasscode(pass); else forgetPasscode();
+  }
+});
+$("forget").addEventListener("click", e => {
+  e.preventDefault();
+  forgetPasscode();
+  $("remember").checked = false;
+  $("pass").value = "";
+  msg("This device has been forgotten.");
+});
+
+// Unlock automatically with a remembered passcode; drop it only if it is rejected.
+(async () => {
+  let saved = null;
+  try { saved = localStorage.getItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  if (!saved) return;
+  $("pass").value = saved;
+  $("remember").checked = true;
+  $("forget").hidden = false;
+  if ((await unlock(saved)) === "invalid") { forgetPasscode(); $("remember").checked = false; $("pass").value = ""; }
+})();
+$("search").addEventListener("input", renderResults);
+
+// ---- Edit / new dialog (same inputs as index.html, plus payment fields) ----
+function renderMeals(container, prefix) {
+  $(container).innerHTML = COURSES.map(([key, label]) =>
+    `<div class="course">${label}</div>` +
+    MENU[key].map(o => `<label class="opt"><input type="radio" name="${prefix}_${key}" value="${esc(o)}"> ${esc(o)}</label>`).join("")
+  ).join("");
+}
+renderMeals("e_member_meals", "em");
+renderMeals("e_plus_meals", "ep");
+
+const picked = (prefix, key) => { const r = document.querySelector(`input[name="${prefix}_${key}"]:checked`); return r ? r.value : null; };
+const setPicked = (prefix, key, val) => document.querySelectorAll(`input[name="${prefix}_${key}"]`).forEach(r => { r.checked = (r.value === val); });
+
+$("e_has_plus").addEventListener("change", e => { $("e_plus_wrap").hidden = !e.target.checked; });
+$("e_no_email").addEventListener("change", e => {
+  $("e_email").disabled = e.target.checked;
+  if (e.target.checked) $("e_email").value = "";
+});
+$("e_cancel").addEventListener("click", () => $("edit_dialog").close());
+$("e_x").addEventListener("click", () => $("edit_dialog").close());
+
+function openEditor(r) {
+  editingEmail = r ? r.email : null;
+  $("e_title").textContent = r ? "Edit record" : "New record";
+  const noEmail = !!r && r.email.endsWith("@no.email");
+  $("e_no_email").checked = noEmail;
+  $("e_email").disabled = noEmail;
+  $("e_email").value = r && !noEmail ? r.email : "";
+  $("e_mobile").value = r?.mobile || "";
+  $("e_member_name").value = r?.member_name || "";
+  COURSES.forEach(([k]) => setPicked("em", k, r ? r["member_" + k] : null));
+  const hasPlus = !!r?.plus_one_name;
+  $("e_has_plus").checked = hasPlus;
+  $("e_plus_wrap").hidden = !hasPlus;
+  $("e_plus_one_name").value = r?.plus_one_name || "";
+  COURSES.forEach(([k]) => setPicked("ep", k, r ? r["plus_one_" + k] : null));
+  $("e_received").value = r?.received ?? "";
+  $("e_deposit").checked = !!r?.deposit;
+  $("e_paid").checked = !!r?.paid;
+  eMsg("");
+  $("edit_dialog").showModal();
+}
+
+$("new_btn").addEventListener("click", () => openEditor(null));
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button.edit");
+  if (!btn) return;
+  const r = records.find(x => x.email === btn.closest("tr").dataset.email);
+  if (r) openEditor(r);
+});
+
+$("edit_form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("e_member_name").value.trim();
+  if (!name) return eMsg("Please enter the member's name.");
+  const email = $("e_no_email").checked ? name.replace(/\s+/g, "") + "@no.email" : $("e_email").value.trim();
+  if (!validEmail(email)) return eMsg("Please enter a valid email address, or tick No email.");
+  const mobile = $("e_mobile").value.trim();
+  if (mobile && !/^\+?[\d\s()-]{7,20}$/.test(mobile)) return eMsg("Please enter a valid mobile number, or leave it blank.");
+  const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("em", k)]));
+  if (Object.values(m).includes(null)) return eMsg("Please choose a starter, main and dessert for the member.");
+  const received = $("e_received").value === "" ? null : Math.round(Number($("e_received").value) * 100) / 100;
+  if (received !== null && !(received >= 0)) return eMsg("Received must be a positive amount.");
+
+  const args = {
+    p_passcode: passcode, p_old_email: editingEmail, p_email: email, p_member_name: name, p_mobile: mobile || null,
+    p_member_starter: m.starter, p_member_main: m.main, p_member_dessert: m.dessert,
+    p_plus_one_name: null, p_plus_one_starter: null, p_plus_one_main: null, p_plus_one_dessert: null,
+    p_deposit: $("e_deposit").checked, p_paid: $("e_paid").checked, p_received: received
+  };
+  if ($("e_has_plus").checked) {
+    const pname = $("e_plus_one_name").value.trim();
+    const p = Object.fromEntries(COURSES.map(([k]) => [k, picked("ep", k)]));
+    if (!pname) return eMsg("Please enter the plus one's name.");
+    if (Object.values(p).includes(null)) return eMsg("Please choose a starter, main and dessert for the plus one.");
+    Object.assign(args, { p_plus_one_name: pname, p_plus_one_starter: p.starter, p_plus_one_main: p.main, p_plus_one_dessert: p.dessert });
+  }
+
+  $("e_save").disabled = true;
+  try {
+    await rpc("admin_save_meal_choice", args);
+    $("edit_dialog").close();
+    await loadRecords();
+    msg(editingEmail === null ? "Record added." : "Record updated.");
+  } catch (err) {
+    eMsg(/duplicate key|unique/i.test(err.message) ? "Another record already uses that email." : "Save failed: " + err.message);
+  } finally { $("e_save").disabled = false; }
+});
+</script>
+</body>
+</html>

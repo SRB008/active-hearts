@@ -42,6 +42,8 @@
   button:disabled { opacity:.6; cursor:wait; }
   #e_msg { margin:8px 0; color:#c0392b; }
   dialog input:disabled { opacity:.6; }
+  .x-wrap { position:sticky; top:0; height:0; text-align:right; z-index:1; }
+  button.x { padding:0; width:32px; height:32px; line-height:1; font-size:22px; border-radius:50%; background:var(--card); color:var(--accent); box-shadow:0 1px 4px rgba(0,0,0,.3); }
   h2 { margin:24px 0 8px; font-size:1.1em; }
   #totals { margin:0; padding-left:20px; }
 </style>
@@ -52,8 +54,11 @@
   <form class="bar" id="auth">
     <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password" required>
     <button type="submit">Show list</button>
+    <label><input type="checkbox" id="remember"> Remember on this device</label>
+    <a href="#" id="forget" hidden>Forget this device</a>
   </form>
   <div id="msg"></div>
+  <div class="bar"><input type="search" id="search" placeholder="Search by email or member name" autocomplete="off" hidden></div>
   <div class="bar"><button type="button" id="export" hidden>Export for Me</button> <button type="button" id="export_birch" hidden>Export for Birch</button></div>
   <div class="wrap" id="out" hidden>
     <table>
@@ -68,6 +73,7 @@
 </main>
 
 <dialog id="edit_dialog">
+  <div class="x-wrap"><button type="button" class="x" id="e_x" title="Close" aria-label="Close">&times;</button></div>
   <h2>Edit record</h2>
   <form id="edit_form" novalidate>
     <fieldset>
@@ -214,8 +220,55 @@ document.getElementById("auth").addEventListener("submit", async e => {
   e.preventDefault();
   msg("Loading...");
   document.getElementById("out").hidden = true;
-  await loadList(document.getElementById("pass").value);
+  const pass = document.getElementById("pass").value;
+  if (await loadList(pass)) {
+    if (document.getElementById("remember").checked) savePasscode(pass); else forgetPasscode();
+  }
 });
+
+// Optional "remember on this device"; storage can be blocked, so every access is guarded.
+const PASS_KEY = "ah_passcode";
+function savePasscode(p) {
+  try { localStorage.setItem(PASS_KEY, p); document.getElementById("forget").hidden = false; } catch (e) { /* storage blocked */ }
+}
+function forgetPasscode() {
+  try { localStorage.removeItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  document.getElementById("forget").hidden = true;
+}
+document.getElementById("forget").addEventListener("click", e => {
+  e.preventDefault();
+  forgetPasscode();
+  document.getElementById("remember").checked = false;
+  document.getElementById("pass").value = "";
+  msg("This device has been forgotten.");
+});
+
+// Filters the table by hiding rows (not re-rendering) so unsaved typing in the Received boxes is kept.
+// A plus one row follows its member row. Exports and totals always cover every record.
+function applySearch() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll("#rows tr.member").forEach(tr => {
+    const r = lastData.find(x => x.email === tr.dataset.email);
+    const match = !q || (r && (r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q)));
+    tr.hidden = !match;
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains("plus")) next.hidden = !match;
+    if (match) shown++;
+  });
+  return shown;
+}
+document.getElementById("search").addEventListener("input", () => {
+  const shown = applySearch();
+  const q = document.getElementById("search").value.trim();
+  if (q) msg(`${shown} of ${lastData.length} responses match.`);
+  else summary();
+});
+
+function summary() {
+  const attendees = lastData.length + lastData.filter(r => r.plus_one_name).length;
+  msg(`${lastData.length} response${lastData.length === 1 ? "" : "s"}, ${attendees} attendee${attendees === 1 ? "" : "s"}.`);
+}
 
 async function loadList(pass) {
   try {
@@ -238,10 +291,25 @@ async function loadList(pass) {
     document.getElementById("export").hidden = false;
     document.getElementById("export_birch").hidden = false;
     document.getElementById("out").hidden = false;
-    const attendees = data.length + data.filter(r => r.plus_one_name).length;
-    msg(`${data.length} response${data.length === 1 ? "" : "s"}, ${attendees} attendee${attendees === 1 ? "" : "s"}.`);
-  } catch (err) { msg(err.message, true); }
+    document.getElementById("search").hidden = false;
+    if (applySearch() !== data.length) msg(`${applySearch()} of ${data.length} responses match.`);
+    else summary();
+    return true;
+  } catch (err) { msg(err.message, true); return false; }
 }
+
+// Sign in automatically with a remembered passcode; drop it if it no longer works.
+(async () => {
+  let saved = null;
+  try { saved = localStorage.getItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  if (!saved) return;
+  document.getElementById("pass").value = saved;
+  document.getElementById("remember").checked = true;
+  document.getElementById("forget").hidden = false;
+  msg("Loading...");
+  // Only a rejected passcode clears it; a network error keeps it for next time.
+  if (!(await loadList(saved)) && document.getElementById("msg").textContent === "Invalid passcode.") { forgetPasscode(); document.getElementById("remember").checked = false; document.getElementById("pass").value = ""; }
+})();
 
 // ---- Edit pop-up (mirrors the form on index.html; sends no emails) ----
 const MENU = {
@@ -272,6 +340,7 @@ $("e_no_email").addEventListener("change", e => {
   if (e.target.checked) $("e_email").value = "";
 });
 $("e_cancel").addEventListener("click", () => $("edit_dialog").close());
+$("e_x").addEventListener("click", () => $("edit_dialog").close());
 
 $("rows").addEventListener("click", e => {
   const btn = e.target.closest("button.edit");
