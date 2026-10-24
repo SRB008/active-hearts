@@ -34,6 +34,8 @@
   dialog { max-width:560px; width:calc(100% - 32px); max-height:85vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
   dialog::backdrop { background:rgba(0,0,0,.5); }
   dialog h2 { margin:0 0 8px; }
+  .x-wrap { position:sticky; top:0; height:0; text-align:right; z-index:1; }
+  button.x { padding:0; width:32px; height:32px; line-height:1; font-size:22px; border-radius:50%; background:var(--card); color:var(--accent); box-shadow:0 1px 4px rgba(0,0,0,.3); }
   dialog h3 { margin:16px 0 6px; color:var(--accent); }
   dialog p.dish { margin:0 0 10px; }
   dialog p.dish span { display:block; color:var(--muted); font-size:.92em; }
@@ -45,10 +47,8 @@
   <h1>Christmas Meal 2026</h1>
   <p class="sub">Active Hearts Christmas meal, Birch Hotel, Haywards Heath, Friday 11 December, 12:30. Choose a starter, main and dessert for yourself and optionally your plus one, for a two (£29.50) or three (£34.50) course meal.
     Use the same email later to look up or change your choices. <b>Last chance to change meal choice is midnight 9th November!</b><br>
-    <span class="key">VE = vegeterian · GF = gluten free · DF = dairy free</span></p>
   <p class="sub" id="goers" hidden></p>
-  <p class="sub">Data will only be used for this meal and deleted by 31 December 2026.</p>
-
+    
   <form id="form" novalidate>
     <fieldset>
       <legend>Your email</legend>
@@ -61,7 +61,8 @@
     <fieldset>
       <legend>Active Member</legend>
       <label class="f">Name <input type="text" id="member_name" autocomplete="name" required></label>
-      <p class="f"><a href="#" id="menu_link">Menu</a></p>
+      <p class="f"><a href="#" id="menu_link">Full Menu</a></p>
+      <span class="key">VE = vegetarian · GF = gluten free · DF = dairy free</span>
       <div id="member_meals"></div>
     </fieldset>
 
@@ -76,14 +77,15 @@
 
     <div id="msg" role="status"></div>
     <button type="submit" id="submit">Save my choices</button>
-    <p class="key">Emails come from active-hearts@ixiapps.co.uk</p>
+    <p class="key">Emails come from active-hearts@ixiapps.co.uk. Data will only be used for this meal and deleted by 31 December 2026. No cookies used here, more for you to enjoy!</p>
   </form>
 </main>
 
 <dialog id="menu_dialog">
+  <div class="x-wrap"><button type="button" class="x" id="menu_x" title="Close" aria-label="Close">&times;</button></div>
   <h2>Menu</h2>
-  <div id="menu_body"></div>
   <p class="key">VE = vegetarian · GF = gluten free · DF = dairy free</p>
+  <div id="menu_body"></div>
   <button type="button" id="menu_close">Close</button>
 </dialog>
 
@@ -228,6 +230,7 @@ $("menu_body").innerHTML = Object.entries(MENU_DETAIL).map(([course, dishes]) =>
 ).join("");
 $("menu_link").addEventListener("click", e => { e.preventDefault(); $("menu_dialog").showModal(); });
 $("menu_close").addEventListener("click", () => $("menu_dialog").close());
+$("menu_x").addEventListener("click", () => $("menu_dialog").close());
 $("menu_dialog").addEventListener("click", e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
 
 $("clear").addEventListener("click", () => {
