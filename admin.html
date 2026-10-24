@@ -27,7 +27,19 @@
   table { border-collapse:collapse; background:var(--card); min-width:100%; }
   th, td { border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; }
   thead th { background:var(--bg); white-space:nowrap; }
-  tr.plus td { color:var(--muted); }
+  td.wrapcell { word-break:break-all; }
+  @media (max-width: 600px) {
+    body { font-size:14px; }
+    main { padding:16px 12px 40px; }
+    th, td { padding:6px; }
+    #search { flex-basis:100%; }
+    #new_btn, #auth button { flex:1; }
+    button.edit { font-size:20px; padding:4px 10px; }
+    input[type=text], input[type=email], input[type=tel], input[type=password], input[type=search], input[type=number] { font-size:16px; } /* stops iOS zooming on focus */
+    dialog { padding:16px; max-height:94vh; }
+    fieldset { padding:10px 12px; }
+    .opt { padding:8px; }
+  }
 
   dialog { max-width:620px; width:calc(100% - 32px); max-height:90vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
   dialog::backdrop { background:rgba(0,0,0,.5); }
@@ -63,7 +75,7 @@
 
   <div id="tools" hidden>
     <div class="bar">
-      <input type="search" id="search" placeholder="Search by email or member name" autocomplete="off">
+      <input type="search" id="search" placeholder="Search by name, email or mobile" autocomplete="off">
       <button type="button" id="new_btn">New</button>
     </div>
   </div>
@@ -73,7 +85,7 @@
   <div class="wrap" id="out" hidden>
     <table>
       <thead>
-        <tr><th></th><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
+        <tr><th></th><th>Name</th><th>Email</th><th>Mobile</th></tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
@@ -160,16 +172,16 @@ async function loadRecords() {
 
 function renderResults() {
   const q = $("search").value.trim().toLowerCase();
-  const hits = q ? records.filter(r => r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q)) : records;
-  const cells = vals => vals.map(v => `<td>${esc(v)}</td>`).join("");
+  // Mobile numbers are compared digits-only too, so "07700 900123" finds "07700900123".
+  const qDigits = q.replace(/\D/g, "");
+  const hits = q ? records.filter(r =>
+    r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q) ||
+    (r.mobile && (r.mobile.toLowerCase().includes(q) || (qDigits && r.mobile.replace(/\D/g, "").includes(qDigits))))
+  ) : records;
   $("rows").innerHTML = hits.map(r =>
     `<tr data-email="${esc(r.email)}">` +
     `<td><button type="button" class="edit" title="Edit" aria-label="Edit ${esc(r.member_name)}">&#9998;</button></td>` +
-    cells([r.email, r.mobile, r.member_name, r.member_starter, r.member_main, r.member_dessert,
-           r.received === null ? "" : "£" + Number(r.received).toFixed(2), r.deposit ? "Yes" : "", r.paid ? "Yes" : ""]) + "</tr>" +
-    (r.plus_one_name
-      ? `<tr class="plus">` + cells(["", "", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert, "", "", ""]) + "</tr>"
-      : "")
+    `<td>${esc(r.member_name)}</td><td class="wrapcell">${esc(r.email)}</td><td>${esc(r.mobile)}</td></tr>`
   ).join("");
   $("out").hidden = false;
   msg(q ? `${hits.length} of ${records.length} records match.` : `${records.length} record${records.length === 1 ? "" : "s"}.`);
