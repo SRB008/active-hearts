@@ -58,7 +58,7 @@
     <a href="#" id="forget" hidden>Forget this device</a>
   </form>
   <div id="msg"></div>
-  <div class="bar"><input type="search" id="search" placeholder="Search by email or name" autocomplete="off" hidden></div>
+  <div class="bar"><input type="search" id="search" placeholder="Search by name, email or mobile" autocomplete="off" hidden></div>
   <div class="bar"><button type="button" id="export" hidden>Export for Me</button> <button type="button" id="export_birch" hidden>Export for Birch</button></div>
   <div class="wrap" id="out" hidden>
     <table>
@@ -247,10 +247,13 @@ document.getElementById("forget").addEventListener("click", e => {
 // A plus one row follows its member row. Exports and totals always cover every record.
 function applySearch() {
   const q = document.getElementById("search").value.trim().toLowerCase();
+  // Mobile numbers are compared digits-only too, so "07700 900123" finds "07700900123".
+  const qDigits = q.replace(/\D/g, "");
   let shown = 0;
   document.querySelectorAll("#rows tr.member").forEach(tr => {
     const r = lastData.find(x => x.email === tr.dataset.email);
-    const match = !q || (r && (r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q)));
+    const match = !q || (r && (r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q) ||
+      (r.mobile && (r.mobile.toLowerCase().includes(q) || (qDigits && r.mobile.replace(/\D/g, "").includes(qDigits))))));
     tr.hidden = !match;
     const next = tr.nextElementSibling;
     if (next && next.classList.contains("plus")) next.hidden = !match;
