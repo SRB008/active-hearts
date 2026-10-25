@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meal Choices List</title>
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --ink:#222; --muted:#666; --accent:#8a1c2b; --line:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1a1a1a; --card:#262626; --ink:#eee; --muted:#aaa; --accent:#e0707f; --line:#444; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui,sans-serif; }
+  main { padding:24px 16px 48px; }
+  h1 { margin:0 0 12px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  input { padding:8px; font:inherit; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); }
+  button { font:inherit; padding:8px 16px; border-radius:6px; border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  #msg { color:var(--muted); margin-bottom:12px; }
+  #msg.err { color:#c0392b; }
+  .wrap { overflow-x:auto; }
+  table { border-collapse:collapse; background:var(--card); min-width:100%; }
+  th, td { border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; }
+  thead th { background:var(--bg); white-space:nowrap; }
+  tr.member td { border-top:2px solid var(--accent); }
+  tr.plus td { color:var(--muted); }
+  input.amt { width:90px; text-align:right; }
+  button.edit { padding:2px 8px; background:transparent; color:var(--accent); font-size:16px; }
+  dialog { max-width:600px; width:calc(100% - 32px); max-height:90vh; overflow-y:auto; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:20px; }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog h2 { margin:0 0 12px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin:0 0 12px; }
+  legend { font-size:18px; font-weight:700; color:var(--accent); padding:0 6px; }
+  label.f { display:block; margin:0 0 10px; font-weight:600; }
+  dialog input[type=text], dialog input[type=email], dialog input[type=tel] { width:100%; }
+  .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .course { margin:12px 0 4px; font-weight:600; }
+  .opt { display:block; padding:4px 8px; border-radius:6px; cursor:pointer; }
+  .opt:hover { background:var(--bg); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  button.alt { background:transparent; color:var(--accent); }
+  button:disabled { opacity:.6; cursor:wait; }
+  #e_msg { margin:8px 0; color:#c0392b; }
+  dialog input:disabled { opacity:.6; }
+  .x-wrap { position:sticky; top:0; height:0; text-align:right; z-index:1; }
+  button.x { padding:0; width:32px; height:32px; line-height:1; font-size:22px; border-radius:50%; background:var(--card); color:var(--accent); box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  h2 { margin:24px 0 8px; font-size:1.1em; }
+  #totals { margin:0; padding-left:20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Meal Choices</h1>
+  <form class="bar" id="auth">
+    <input type="password" id="pass" placeholder="Passcode" autocomplete="current-password" required>
+    <button type="submit">Show list</button>
+    <label><input type="checkbox" id="remember"> Remember on this device</label>
+    <a href="#" id="forget" hidden>Forget this device</a>
+  </form>
+  <div id="msg"></div>
+  <div class="bar"><input type="search" id="search" placeholder="Search by name, email or mobile" autocomplete="off" hidden></div>
+  <div class="bar"><button type="button" id="export" hidden>Export for Me</button> <button type="button" id="export_birch" hidden>Export for Birch</button></div>
+  <div class="wrap" id="out" hidden>
+    <table>
+      <thead>
+        <tr><th></th><th>Email</th><th>Mobile</th><th>Name</th><th>Starter</th><th>Main</th><th>Dessert</th><th>Received</th><th>Deposit</th><th>Paid</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <h2>Meal totals</h2>
+    <ul id="totals"></ul>
+  </div>
+</main>
+
+<dialog id="edit_dialog">
+  <div class="x-wrap"><button type="button" class="x" id="e_x" title="Close" aria-label="Close">&times;</button></div>
+  <h2>Edit record</h2>
+  <form id="edit_form" novalidate>
+    <fieldset>
+      <legend>Your email</legend>
+      <label class="f">Email <input type="email" id="e_email"></label>
+      <label class="check"><input type="checkbox" id="e_no_email"> No email</label>
+      <label class="f">Mobile number (optional) <input type="tel" id="e_mobile" inputmode="tel"></label>
+    </fieldset>
+    <fieldset>
+      <legend>Active Member</legend>
+      <label class="f">Name <input type="text" id="e_member_name"></label>
+      <div id="e_member_meals"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Plus One</legend>
+      <label class="check"><input type="checkbox" id="e_has_plus"> Bringing a plus one</label>
+      <div id="e_plus_wrap" hidden>
+        <label class="f">Name <input type="text" id="e_plus_one_name"></label>
+        <div id="e_plus_meals"></div>
+      </div>
+    </fieldset>
+    <div id="e_msg" role="status"></div>
+    <div class="row">
+      <button type="submit" id="e_save">Save changes</button>
+      <button type="button" class="alt" id="e_cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script>
+const SUPABASE_URL = "https://qkkcvbafkderoxlxvjww.supabase.co";
+const SUPABASE_KEY = "sb_publishable_FzDjgkUIrncKMuyt253GsA_qK2fGKH1";
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const msg = (t, err) => { const m = document.getElementById("msg"); m.textContent = t; m.className = err ? "err" : ""; };
+
+let passcode = "";
+let lastData = [];
+
+const COURSES = [["starter", "Starter"], ["main", "Main"], ["dessert", "Dessert"]];
+
+// Counts every member and plus one meal; returns lines like "3 x Starter - Chicken Liver Pate".
+// Grouped by course, highest count first.
+function mealTotals(data) {
+  const lines = [];
+  for (const [key, label] of COURSES) {
+    const counts = new Map();
+    for (const r of data) {
+      for (const v of [r["member_" + key], r["plus_one_" + key]]) {
+        if (v && v !== "No starter" && v !== "No dessert") counts.set(v, (counts.get(v) || 0) + 1);
+      }
+    }
+    [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .forEach(([name, n]) => lines.push(`${n} x ${label} - ${name}`));
+  }
+  return lines;
+}
+
+// forBirch drops the email, mobile, deposit, paid and received columns.
+function exportPdf(forBirch) {
+  if (!window.jspdf) return msg("PDF library failed to load. Check your internet connection.", true);
+  const state = {};
+  document.querySelectorAll("#rows tr.member").forEach(tr => {
+    const [d, p] = tr.querySelectorAll("input[type=checkbox]");
+    state[tr.dataset.email] = [d.checked, p.checked, tr.querySelector("input[type=number]").value];
+  });
+  const body = [];
+  lastData.forEach(r => {
+    const [dep, paid, received] = state[r.email] || [r.deposit, r.paid, r.received];
+    const member = [r.member_name, r.member_starter, r.member_main, r.member_dessert];
+    const plus = r.plus_one_name ? [r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert] : null;
+    if (forBirch) {
+      body.push({ cells: member });
+      if (plus) body.push({ cells: plus, plus: true });
+    } else {
+      body.push({ cells: [r.email, r.mobile || "", ...member, received === null || received === "" ? "" : "£" + Number(received).toFixed(2), dep ? "Yes" : "", paid ? "Yes" : ""] });
+      if (plus) body.push({ cells: ["", "", ...plus, "", "", ""], plus: true });
+    }
+  });
+  const doc = new window.jspdf.jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+  doc.setFontSize(14);
+  doc.text(forBirch ? "Meal Choices - For Birch" : "Meal Choices", 40, 36);
+  doc.setFontSize(9);
+  const attendees = lastData.length + lastData.filter(r => r.plus_one_name).length;
+  doc.text(new Date().toLocaleDateString("en-GB") + (forBirch ? ` - ${attendees} attendees` : ` - ${lastData.length} responses, ${attendees} attendees`), 40, 50);
+  doc.autoTable({
+    startY: 60,
+    head: [forBirch ? ["Name", "Starter", "Main", "Dessert"] : ["Email", "Mobile", "Name", "Starter", "Main", "Dessert", "Received", "Deposit", "Paid"]],
+    body: body.map(b => b.cells),
+    styles: { fontSize: 8, cellPadding: 3 },
+    headStyles: { fillColor: [138, 28, 43] },
+    didParseCell: d => { if (d.section === "body" && body[d.row.index].plus) d.cell.styles.textColor = [110, 110, 110]; }
+  });
+  let y = doc.lastAutoTable.finalY + 24;
+  doc.setFontSize(11);
+  if (y > 540) { doc.addPage(); y = 40; }
+  doc.text("Meal totals", 40, y);
+  doc.setFontSize(9);
+  mealTotals(lastData).forEach(l => {
+    y += 14;
+    if (y > 560) { doc.addPage(); y = 40; }
+    doc.text(l, 40, y);
+  });
+  doc.save(forBirch ? "meal-choices-for-birch.pdf" : "meal-choices.pdf");
+}
+document.getElementById("export").addEventListener("click", () => exportPdf(false));
+document.getElementById("export_birch").addEventListener("click", () => exportPdf(true));
+
+async function rpc(fn, args) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(args)
+  });
+  if (!res.ok) throw new Error(res.status === 400 || res.status === 403 ? "Invalid passcode." : await res.text());
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+document.getElementById("rows").addEventListener("change", async e => {
+  const tr = e.target.closest("tr");
+  if (!tr || !["checkbox", "number"].includes(e.target.type)) return;
+  const [dep, paid] = tr.querySelectorAll("input[type=checkbox]");
+  const amount = tr.querySelector("input[type=number]");
+  const received = amount.value === "" ? null : Math.round(Number(amount.value) * 100) / 100;
+  if (received !== null && !(received >= 0)) {
+    amount.value = amount.dataset.saved;
+    return msg("Received must be a positive amount.", true);
+  }
+  try {
+    await rpc("set_meal_payment", { p_passcode: passcode, p_email: tr.dataset.email, p_deposit: dep.checked, p_paid: paid.checked, p_received: received });
+    amount.dataset.saved = amount.value;
+    msg("Saved.");
+  } catch (err) {
+    if (e.target === amount) amount.value = amount.dataset.saved;
+    else e.target.checked = !e.target.checked;
+    msg("Save failed: " + err.message, true);
+  }
+});
+
+document.getElementById("auth").addEventListener("submit", async e => {
+  e.preventDefault();
+  msg("Loading...");
+  document.getElementById("out").hidden = true;
+  const pass = document.getElementById("pass").value;
+  if (await loadList(pass)) {
+    if (document.getElementById("remember").checked) savePasscode(pass); else forgetPasscode();
+  }
+});
+
+// Optional "remember on this device"; storage can be blocked, so every access is guarded.
+const PASS_KEY = "ah_passcode";
+function savePasscode(p) {
+  try { localStorage.setItem(PASS_KEY, p); document.getElementById("forget").hidden = false; } catch (e) { /* storage blocked */ }
+}
+function forgetPasscode() {
+  try { localStorage.removeItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  document.getElementById("forget").hidden = true;
+}
+document.getElementById("forget").addEventListener("click", e => {
+  e.preventDefault();
+  forgetPasscode();
+  document.getElementById("remember").checked = false;
+  document.getElementById("pass").value = "";
+  msg("This device has been forgotten.");
+});
+
+// Filters the table by hiding rows (not re-rendering) so unsaved typing in the Received boxes is kept.
+// A plus one row follows its member row. Exports and totals always cover every record.
+function applySearch() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  // Mobile numbers are compared digits-only too, so "07700 900123" finds "07700900123".
+  const qDigits = q.replace(/\D/g, "");
+  let shown = 0;
+  document.querySelectorAll("#rows tr.member").forEach(tr => {
+    const r = lastData.find(x => x.email === tr.dataset.email);
+    const match = !q || (r && (r.email.toLowerCase().includes(q) || r.member_name.toLowerCase().includes(q) ||
+      (r.mobile && (r.mobile.toLowerCase().includes(q) || (qDigits && r.mobile.replace(/\D/g, "").includes(qDigits))))));
+    tr.hidden = !match;
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains("plus")) next.hidden = !match;
+    if (match) shown++;
+  });
+  return shown;
+}
+document.getElementById("search").addEventListener("input", () => {
+  const shown = applySearch();
+  const q = document.getElementById("search").value.trim();
+  if (q) msg(`${shown} of ${lastData.length} responses match.`);
+  else summary();
+});
+
+function summary() {
+  const attendees = lastData.length + lastData.filter(r => r.plus_one_name).length;
+  msg(`${lastData.length} response${lastData.length === 1 ? "" : "s"}, ${attendees} attendee${attendees === 1 ? "" : "s"}.`);
+}
+
+async function loadList(pass) {
+  try {
+    const data = await rpc("list_meal_choices", { p_passcode: pass });
+    passcode = pass;
+    const cells = vals => vals.map(v => `<td>${esc(v)}</td>`).join("");
+    document.getElementById("rows").innerHTML = data.map(r =>
+      `<tr class="member" data-email="${esc(r.email)}">` +
+      `<td><button type="button" class="edit" title="Edit" aria-label="Edit ${esc(r.member_name)}">&#9998;</button></td>` +
+      cells([r.email, r.mobile, r.member_name, r.member_starter, r.member_main, r.member_dessert]) +
+      `<td>£ <input type="number" class="amt" min="0" step="0.01" value="${r.received ?? ""}" data-saved="${r.received ?? ""}" aria-label="Received"></td>` +
+      `<td><input type="checkbox"${r.deposit ? " checked" : ""} aria-label="Deposit"></td>` +
+      `<td><input type="checkbox"${r.paid ? " checked" : ""} aria-label="Paid"></td></tr>` +
+      (r.plus_one_name
+        ? `<tr class="plus">` + cells(["", "", "", r.plus_one_name + " (plus one)", r.plus_one_starter, r.plus_one_main, r.plus_one_dessert]) + `<td></td><td></td><td></td></tr>`
+        : "")
+    ).join("");
+    lastData = data;
+    document.getElementById("totals").innerHTML = mealTotals(data).map(l => `<li>${esc(l)}</li>`).join("");
+    document.getElementById("export").hidden = false;
+    document.getElementById("export_birch").hidden = false;
+    document.getElementById("out").hidden = false;
+    document.getElementById("search").hidden = false;
+    if (applySearch() !== data.length) msg(`${applySearch()} of ${data.length} responses match.`);
+    else summary();
+    return true;
+  } catch (err) { msg(err.message, true); return false; }
+}
+
+// Sign in automatically with a remembered passcode; drop it if it no longer works.
+(async () => {
+  let saved = null;
+  try { saved = localStorage.getItem(PASS_KEY); } catch (e) { /* storage blocked */ }
+  if (!saved) return;
+  document.getElementById("pass").value = saved;
+  document.getElementById("remember").checked = true;
+  document.getElementById("forget").hidden = false;
+  msg("Loading...");
+  // Only a rejected passcode clears it; a network error keeps it for next time.
+  if (!(await loadList(saved)) && document.getElementById("msg").textContent === "Invalid passcode.") { forgetPasscode(); document.getElementById("remember").checked = false; document.getElementById("pass").value = ""; }
+})();
+
+// ---- Edit pop-up (mirrors the form on index.html; sends no emails) ----
+const MENU = {
+  starter: ["Broccoli and Stilton Soup (VE)", "Chicken Liver Pate", "Rainbow Beetroot Carpaccio (VE)", "No starter"],
+  main:    ["Traditional Roast Turkey", "Pan Fried Seabass", "Risotto Verde (VE)"],
+  dessert: ["Traditional Christmas Pudding", "White Chocolate Panna Cotta (GF/DF)", "Apple and Forest Fruit Crumble", "No dessert"]
+};
+const $ = id => document.getElementById(id);
+const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+let editingEmail = "";
+
+function renderMeals(container, prefix) {
+  $(container).innerHTML = COURSES.map(([key, label]) =>
+    `<div class="course">${label}</div>` +
+    MENU[key].map(o => `<label class="opt"><input type="radio" name="${prefix}_${key}" value="${esc(o)}"> ${esc(o)}</label>`).join("")
+  ).join("");
+}
+renderMeals("e_member_meals", "em");
+renderMeals("e_plus_meals", "ep");
+
+const picked = (prefix, key) => { const r = document.querySelector(`input[name="${prefix}_${key}"]:checked`); return r ? r.value : null; };
+const setPicked = (prefix, key, val) => document.querySelectorAll(`input[name="${prefix}_${key}"]`).forEach(r => { r.checked = (r.value === val); });
+const eMsg = t => { $("e_msg").textContent = t; };
+
+$("e_has_plus").addEventListener("change", e => { $("e_plus_wrap").hidden = !e.target.checked; });
+$("e_no_email").addEventListener("change", e => {
+  $("e_email").disabled = e.target.checked;
+  if (e.target.checked) $("e_email").value = "";
+});
+$("e_cancel").addEventListener("click", () => $("edit_dialog").close());
+$("e_x").addEventListener("click", () => $("edit_dialog").close());
+
+$("rows").addEventListener("click", e => {
+  const btn = e.target.closest("button.edit");
+  if (!btn) return;
+  const r = lastData.find(x => x.email === btn.closest("tr").dataset.email);
+  if (!r) return;
+  editingEmail = r.email;
+  const noEmail = r.email.endsWith("@no.email");
+  $("e_no_email").checked = noEmail;
+  $("e_email").disabled = noEmail;
+  $("e_email").value = noEmail ? "" : r.email;
+  $("e_mobile").value = r.mobile || "";
+  $("e_member_name").value = r.member_name;
+  COURSES.forEach(([k]) => setPicked("em", k, r["member_" + k]));
+  const hasPlus = !!r.plus_one_name;
+  $("e_has_plus").checked = hasPlus;
+  $("e_plus_wrap").hidden = !hasPlus;
+  $("e_plus_one_name").value = r.plus_one_name || "";
+  COURSES.forEach(([k]) => setPicked("ep", k, r["plus_one_" + k]));
+  eMsg("");
+  $("edit_dialog").showModal();
+});
+
+$("edit_form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("e_member_name").value.trim();
+  if (!name) return eMsg("Please enter the member's name.");
+  const email = $("e_no_email").checked ? name.replace(/\s+/g, "") + "@no.email" : $("e_email").value.trim();
+  if (!validEmail(email)) return eMsg("Please enter a valid email address, or tick No email.");
+  const mobile = $("e_mobile").value.trim();
+  if (mobile && !/^\+?[\d\s()-]{7,20}$/.test(mobile)) return eMsg("Please enter a valid mobile number, or leave it blank.");
+  const m = Object.fromEntries(COURSES.map(([k]) => [k, picked("em", k)]));
+  if (Object.values(m).includes(null)) return eMsg("Please choose a starter, main and dessert for the member.");
+
+  const args = {
+    p_passcode: passcode, p_old_email: editingEmail, p_email: email, p_member_name: name, p_mobile: mobile || null,
+    p_member_starter: m.starter, p_member_main: m.main, p_member_dessert: m.dessert,
+    p_plus_one_name: null, p_plus_one_starter: null, p_plus_one_main: null, p_plus_one_dessert: null
+  };
+  if ($("e_has_plus").checked) {
+    const pname = $("e_plus_one_name").value.trim();
+    const p = Object.fromEntries(COURSES.map(([k]) => [k, picked("ep", k)]));
+    if (!pname) return eMsg("Please enter the plus one's name.");
+    if (Object.values(p).includes(null)) return eMsg("Please choose a starter, main and dessert for the plus one.");
+    Object.assign(args, { p_plus_one_name: pname, p_plus_one_starter: p.starter, p_plus_one_main: p.main, p_plus_one_dessert: p.dessert });
+  }
+
+  $("e_save").disabled = true;
+  try {
+    await rpc("admin_update_meal_choice", args);
+    $("edit_dialog").close();
+    await loadList(passcode);
+    msg("Record updated.");
+  } catch (err) {
+    eMsg(/duplicate key|unique/i.test(err.message) ? "Another record already uses that email." : "Save failed: " + err.message);
+  } finally { $("e_save").disabled = false; }
+});
+</script>
+</body>
+</html>
