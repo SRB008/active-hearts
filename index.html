@@ -40,6 +40,12 @@
   dialog p.dish { margin:0 0 10px; }
   dialog p.dish span { display:block; color:var(--muted); font-size:.92em; }
   .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .pay { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+  .pay label { font-weight:600; }
+  .pay input[type=text] { width:100px; text-align:right; }
+  /* Read-only ticks: not disabled (browsers fade those), just unclickable. */
+  .pay label.check { pointer-events:none; }
+  .pay input[type=checkbox] { accent-color:var(--accent); width:18px; height:18px; }
 </style>
 </head>
 <body>
@@ -72,6 +78,15 @@
       <div id="plus_wrap" hidden>
         <label class="f">Name <input type="text" id="plus_one_name"></label>
         <div id="plus_meals"></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Payments</legend>
+      <div class="pay">
+        <label>Received £ <input type="text" id="received" readonly tabindex="-1"></label>
+        <label class="check" style="margin:0"><input type="checkbox" id="deposit" tabindex="-1" aria-readonly="true"> Deposit</label>
+        <label class="check" style="margin:0"><input type="checkbox" id="paid" tabindex="-1" aria-readonly="true"> Paid</label>
       </div>
     </fieldset>
 
@@ -257,6 +272,9 @@ $("lookup").addEventListener("click", async () => {
     $("plus_wrap").hidden = !hasPlus;
     $("plus_one_name").value = r.plus_one_name || "";
     COURSES.forEach(([k]) => setPicked("plus", k, r["plus_one_" + k]));
+    $("received").value = r.received == null ? "" : Number(r.received).toFixed(2);
+    $("deposit").checked = !!r.deposit;
+    $("paid").checked = !!r.paid;
     msg("Loaded your saved choices. Change them and save again if needed.", "ok");
   } catch (err) { msg("Lookup failed: " + err.message, "err"); }
 });
