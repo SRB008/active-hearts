@@ -42,6 +42,7 @@
   .check { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
   .pay { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
   .pay label { font-weight:600; }
+  @media (max-width: 600px) { .pay label:first-child { flex-basis:100%; } }
   .pay input[type=text] { width:100px; text-align:right; }
   /* Read-only ticks: not disabled (browsers fade those), just unclickable. */
   .pay label.check { pointer-events:none; }

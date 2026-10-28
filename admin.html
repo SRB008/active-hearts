@@ -55,6 +55,7 @@
   .row { display:flex; gap:8px; flex-wrap:wrap; }
   .pay { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
   .pay label { font-weight:600; }
+  @media (max-width: 600px) { .pay label:first-child { flex-basis:100%; } }
   #e_msg { margin:8px 0; color:#c0392b; }
   dialog input:disabled { opacity:.6; }
   .x-wrap { position:sticky; top:0; height:0; text-align:right; z-index:1; }
