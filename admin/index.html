@@ -185,7 +185,9 @@ function renderResults() {
     `<td>${esc(r.member_name)}</td><td class="wrapcell">${esc(r.email)}</td><td>${esc(r.mobile)}</td></tr>`
   ).join("");
   $("out").hidden = false;
-  msg(q ? `${hits.length} of ${records.length} records match.` : `${records.length} record${records.length === 1 ? "" : "s"}.`);
+  const attendees = records.length + records.filter(r => r.plus_one_name).length;
+  msg((q ? `${hits.length} of ${records.length} records match` : `${records.length} record${records.length === 1 ? "" : "s"}`) +
+    `, ${attendees} attendee${attendees === 1 ? "" : "s"}.`);
 }
 
 // Returns true on success; "invalid" when the passcode was rejected; false on any other error.
