@@ -176,7 +176,7 @@ function recordEmail() {
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 <!-- change email address to send choices to different person -->
-const NOTIFY_EMAIL = "gretadunning@me.com";
+const NOTIFY_EMAIL = "hello@stevebaird.com";
 
 async function sendMail(to, subject, text, html) {
   const res = await fetch(SMTP2GO_URL + "email/send", {
